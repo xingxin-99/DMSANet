@@ -13,3 +13,5 @@ The package requirements to run all the codes are provided in file environment.t
 We thank Ravikiran Mane et al. for their useful [toolbox](https://github.com/ravikiran-mane/FBCNet).
 
 We thank  [FBCSP toolbox](https://github.com/kerimalmali/BCI-Dataset-FBCSP/tree/main).
+
+We thank Cui et al. for their useful [code](https://github.com/cuijiancorbin/A-Compact-and-Interpretable-Convolutional-Neural-Network-for-Single-Channel-EEG)
