@@ -11,4 +11,5 @@ The package requirements to run all the codes are provided in file environment.t
 
 # Acknowledgment
 We thank Ravikiran Mane et al. for their useful [toolbox](https://github.com/ravikiran-mane/FBCNet).
-We thank  [FBCSP toolbox](https://github.com/kerimalmali/BCI-Dataset-FBCSP/tree/main)
+
+We thank  [FBCSP toolbox](https://github.com/kerimalmali/BCI-Dataset-FBCSP/tree/main).
