@@ -46,17 +46,18 @@ torch.manual_seed(0)
 
 # 导入模型并加载最好的模型
 model =DMSANet(nChan=22, nTime=1000, nClass=4)
-model.load_state_dict(torch.load('C:/Users/BCIgroup/Desktop/star/Coding/FBCNet/FBCNet-master/codes/netInitModels/DMSANet_0.pth'))
+model.load_state_dict(torch.load('C:/Users/BCIgroup/Desktop/star/Coding/DMSANet/codes/netInitModels/DMSANet_0.pth'))
 target_layer = [model.FC[0]]
 
 # 载入数据
-dataPath = 'C:/Users/BCIgroup/Desktop/star/Coding/FBCNet/FBCNet-master/data/bci42a/rawPython/00000.dat'
+dataPath = 'C:/Users/BCIgroup/Desktop/star/Coding/DMSANet/data/bci42a/rawPython/00000.dat'
 channelnum = 22
 samplelength = 1000
 
 
 # # 处理数据
-
+# sub = str(i).zfill(5)
+# f = os.path.join(dataPath, sub + '.dat')
 with open(dataPath, 'rb') as fp:
     d = pickle.load(fp)
 data = d['data']

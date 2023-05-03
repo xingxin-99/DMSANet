@@ -172,15 +172,6 @@ class baseModel():
         # Create the loss function
         lossFn = self._findLossFn(lossFn)(reduction='sum')
 
-        # centerloss = None
-        # optimzer4center = None
-        #
-        # if centerLossEnable:
-        #     # CenterLoss
-        #     loss_weight = 1
-        #     centerloss = CenterLoss(num_classes=4, feat_dim=1152).to(self.device)
-        #     # optimzer4center
-        #     optimzer4center = optim.SGD(centerloss.parameters(), lr=0.1)
 
         # store the experiment details.
         self.expDetails = []
@@ -538,7 +529,7 @@ class baseModel():
                     feats = feats.reshape(len(d['data']), -1).data.detach().cpu()
 
                     title = "-tsne-" + self.net._get_name()
-                    filepath = 'C:/Users/BCIgroup/Desktop/star/fbmsnet' + title
+                    filepath = 'C:/Users/BCIgroup/Desktop/star/dmsanet' + title
                     from pandas import DataFrame
                     y = d['label'].numpy()
                     fig, ax = plt.subplots(figsize=(3.5, 3.5))

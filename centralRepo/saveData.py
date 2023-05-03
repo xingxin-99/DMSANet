@@ -73,7 +73,6 @@ def parseBci42aFile(dataPath, labelPath, epochWindow=[0, 4], chans=list(range(22
         s: float, sampling frequency
         c: list of channels - can be list of ints.
     '''
-    eventCode = [2]  # start of the trial at t=0
     fs = 250
     offset = 2
 
@@ -98,6 +97,7 @@ def parseBci42aFile(dataPath, labelPath, epochWindow=[0, 4], chans=list(range(22
 
     # Multiply the data with 1e6
     x = x * 1e6
+    x = np.transpose(x, (2,0,1))
 
     # Load the labels
     y = loadmat(labelPath)["classlabel"].squeeze()
@@ -204,14 +204,6 @@ def parseHGDFile(dataPath):
         lambda a: highpass_cnt(
             a, low_cut_hz, cnt.info['sfreq'], filt_order=3, axis=1),
         cnt)
-
-    # Standardizing...
-    # cnt = mne_apply(
-    #     lambda a: exponential_running_standardize(a.T, factor_new=1e-3,
-    #                                               init_block_size=1000,
-    #                                               eps=1e-4).T,
-    #     cnt)
-
     # Trial interval
     ival = [0, 4000]
     dataset = create_signal_target_from_raw_mne(cnt, marker_def, ival)
@@ -284,11 +276,6 @@ def matToPython(datasetPath, savePath, isFiltered=False):
             parD['data'] = {}
             d = loadmat(os.path.join(root, f),
                         verify_compressed_data_integrity=False)
-            # if isFiltered:
-            #     parD['data']['eeg'] = np.transpose(d['x'], (2,0,1,3)).astype('float32')
-            # else:
-            #     parD['data']['eeg'] = np.transpose(d['x'], (2,0,1)).astype('float32')
-            # id datasetid=2
             parD['data']['eeg'] = d['x'].astype('float32')
 
             parD['data']['labels'] = d['y']
@@ -362,11 +349,10 @@ def fetchData(dataFolder, datasetId=0):
     ----------
     dataFolder : str
         The path to the parent dataFolder.
-        example: '/home/FBCNetToolbox/data/korea/'
     datasetId : int
         id of the dataset:
             0 : bci42a data (default)
-			1 : korea data
+			1 : hgd data
 
     Returns
     -------
@@ -377,7 +363,6 @@ def fetchData(dataFolder, datasetId=0):
     oDataFolder = 'originalData'
     rawMatFolder = 'rawMat'
     rawPythonFolder = 'rawPython'
-    multiviewPythonFolder = 'multiviewPython'
 
     # check that all original data exists
     if not os.path.exists(os.path.join(dataFolder, oDataFolder)):

@@ -88,7 +88,7 @@ def cv(datasetId = None, network = None, nGPU = None, subTorun=None):
     # For random division set config['loadCVFold'] to False
     config['loadCVFold'] = True
     config['pathCVFold'] = {0: 'CVIdx-subSpec-bci42a-seq.json',
-                            1: 'CVIdx-subSpec-korea-seq.json'}
+                            1: 'CVIdx-subSpec-hgd-seq.json'}
 
     # network initialization details:
     config['loadNetInitState'] = True;
@@ -105,6 +105,7 @@ def cv(datasetId = None, network = None, nGPU = None, subTorun=None):
     modeInFol = 'rawPython'
 
     # set final input location
+    #
     config['inDataPath'] = os.path.join(config['inDataPath'], datasets[datasetId], modeInFol)
 
     # Path to the input data labels file
@@ -590,15 +591,5 @@ if __name__ == '__main__':
 
     else:
         subTorun = None
-    # subTorun = [1,2,3,4,5,
-    #             6,7,8,9,10,
-    #             11,12,13,14,15,
-    #             16,17,18,19,20,
-    #             21,22,23,24,25,
-    #             26,27,28,29,30,
-    #             31,32,33,34,35,
-    #             36,37,38,39,40,
-    #             41,42,43,44,45,
-    #             46,47,48,49,50,
-    #             51,52,53]
+
     cv(datasetId=1, network='DMSANet', nGPU='0', subTorun=subTorun)

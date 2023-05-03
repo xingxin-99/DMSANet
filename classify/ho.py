@@ -36,7 +36,7 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
     selectiveSubs = False
     
     # decide which data to operate on:
-    # datasetId ->  0:BCI-IV-2a data,    1: Korea data
+    # datasetId ->  0:BCI-IV-2a data,    1: HGD data
     datasets = ['bci42a', 'hgd']
     
     #%% Define all the model and training related options here.
@@ -86,6 +86,7 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
     # Input data base folder:
     toolboxPath = os.path.dirname(masterPath)
     config['inDataPath'] = os.path.join(toolboxPath, 'data')
+
     # Input data datasetId folders
     modeInFol = 'rawPython'
 

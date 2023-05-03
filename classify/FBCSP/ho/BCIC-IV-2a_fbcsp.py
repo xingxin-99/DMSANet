@@ -1,46 +1,8 @@
 import numpy as np
 import scipy.signal as signal
 from scipy.signal import cheb2ord
-from sklearn.metrics import confusion_matrix, accuracy_score, recall_score, cohen_kappa_score, f1_score, precision_score
-from collections import OrderedDict
-import urllib.request as request
-from contextlib import closing
-import mne
-import warnings
-warnings.filterwarnings("ignore")
-from scipy.io import loadmat, savemat
-import os
-import pickle
-import csv
-from shutil import copyfile
-import sys
-import resampy
-import shutil
-import numpy as np
-from braindecode.datasets.bbci import BBCIDataset
-from braindecode.datautil.signalproc import highpass_cnt
-from braindecode.datasets.bbci import BBCIDataset
-from braindecode.datautil.signalproc import highpass_cnt
-import torch.nn.functional as F
-import torch as th
-from torch import optim
-from braindecode.torch_ext.util import set_random_seeds
-from braindecode.models.deep4 import Deep4Net
-from braindecode.models.shallow_fbcsp import ShallowFBCSPNet
-from braindecode.models.util import to_dense_prediction_model
-from braindecode.experiments.experiment import Experiment
-from braindecode.torch_ext.util import np_to_var
-from braindecode.datautil.iterators import CropsFromTrialsIterator
-from braindecode.experiments.stopcriteria import MaxEpochs, NoDecrease, Or
-from braindecode.torch_ext.constraints import MaxNormDefaultConstraint
-from braindecode.experiments.monitors import LossMonitor, MisclassMonitor, \
-    RuntimeMonitor, CroppedTrialMisclassMonitor
 
-from braindecode.datautil.splitters import split_into_two_sets
-from braindecode.datautil.trial_segment import \
-    create_signal_target_from_raw_mne
-from braindecode.mne_ext.signalproc import mne_apply, resample_cnt
-from braindecode.datautil.signalproc import exponential_running_standardize
+import numpy as np
 
 class Classifier:
     def __init__(self,model):
@@ -242,23 +204,17 @@ class LoadBCIC(LoadData):
         super(LoadBCIC,self).__init__(*args)
 
     def get_epochs(self, dataPath, labelPath, epochWindow = [0,4], chans = list(range(22))):
-        eventCode = [2]  # start of the trial at t=0
+
         fs = 250
         offset = 2
-
-        # # load the gdf file using MNE
-        # raw_gdf = mne.io.read_raw_gdf(dataPath, stim_channel="auto")
-        # raw_gdf.load_data()
-        # gdf_events = mne.events_from_annotations(raw_gdf)[0][:, [0, 2]].tolist()
-        # eeg = raw_gdf.get_data()
 
         # load the gdf file using MNE
         raw_gdf = mne.io.read_raw_gdf(dataPath, stim_channel="auto")
         raw_gdf.load_data()
         event = mne.events_from_annotations(raw_gdf)
-        gdf_events = event[0][:, [0, 2]].tolist()
         event_id = event[1]['768']
         eventCode = [event_id]
+        gdf_events = mne.events_from_annotations(raw_gdf)[0][:, [0, 2]].tolist()
         eeg = raw_gdf.get_data()
 
         # drop channels
@@ -273,6 +229,7 @@ class LoadBCIC(LoadData):
 
         # Multiply the data with 1e6
         x = x * 1e6
+        x = x.transpose(2, 0, 1)
 
         # Load the labels
 
@@ -282,90 +239,6 @@ class LoadBCIC(LoadData):
 
         data = {'x': x, 'y': y, 'c': np.array(raw_gdf.info['ch_names'])[chans].tolist(), 's': raw_gdf.info.get('sfreq')}
         return data
-
-class LoadKU(LoadData):
-    '''Subclass of LoadData for loading KU Dataset'''
-    def __init__(self,subject_id,*args):
-        self.subject_id=subject_id
-        self.fs=1000
-        super(LoadKU,self).__init__(*args)
-
-    def get_epochs(self,sessions=[1, 2]):
-        for i in sessions:
-            file_to_load=f'session{str(i)}/s{str(self.subject_id)}/EEG_MI.mat'
-            self.load_raw_data_mat(file_to_load)
-            x_data = self.raw_eeg_subject['EEG_MI_train']['smt'][0, 0]
-            x_data = np.transpose(x_data,axes=[1, 2, 0])
-            labels = self.raw_eeg_subject['EEG_MI_train']['y_dec'][0, 0][0]
-            y_labels = labels - np.min(labels)
-            if hasattr(self,'x_data'):
-                self.x_data=np.append(self.x_data,x_data,axis=0)
-                self.y_labels=np.append(self.y_labels,y_labels)
-            else:
-                self.x_data = x_data
-                self.y_labels = y_labels
-        ch_names = self.raw_eeg_subject['EEG_MI_train']['chan'][0, 0][0]
-        ch_names_list = [str(x[0]) for x in ch_names]
-        eeg_data = {'x_data': self.x_data,
-                    'y_labels': self.y_labels,
-                    'fs': self.fs,
-                    'ch_names':ch_names_list}
-
-        return eeg_data
-
-class LoadHGD(LoadData):
-    '''Subclass of LoadData for loading BCI Competition IV Dataset 2a'''
-    def __init__(self,*args):
-        super(LoadHGD,self).__init__(*args)
-
-    def get_epochs(self, dataPath):
-        load_sensor_names = None
-        low_cut_hz = 4
-        fs = 250.0
-        loader = BBCIDataset(dataPath, load_sensor_names=load_sensor_names)
-        cnt = loader.load()
-        marker_def = OrderedDict([('Right Hand', [1]), ('Left Hand', [2],),
-                                  ('Rest', [3]), ('Feet', [4])])
-        clean_ival = [0, 4000]
-        set_for_cleaning = create_signal_target_from_raw_mne(cnt, marker_def,
-                                                             clean_ival)
-        clean_trial_mask = np.max(np.abs(set_for_cleaning.X), axis=(1, 2)) < 800
-        C_sensors = ['FC5', 'FC1', 'FC2', 'FC6', 'C3', 'C4', 'CP5',
-                     'CP1', 'CP2', 'CP6', 'FC3', 'FCz', 'FC4', 'C5', 'C1', 'C2',
-                     'C6',
-                     'CP3', 'CPz', 'CP4', 'FFC5h', 'FFC3h', 'FFC4h', 'FFC6h',
-                     'FCC5h',
-                     'FCC3h', 'FCC4h', 'FCC6h', 'CCP5h', 'CCP3h', 'CCP4h', 'CCP6h',
-                     'CPP5h',
-                     'CPP3h', 'CPP4h', 'CPP6h', 'FFC1h', 'FFC2h', 'FCC1h', 'FCC2h',
-                     'CCP1h',
-                     'CCP2h', 'CPP1h', 'CPP2h']
-        cnt = cnt.pick_channels(C_sensors)
-        cnt = resample_cnt(cnt, fs)
-        cnt = mne_apply(
-            lambda a: highpass_cnt(
-                a, low_cut_hz, cnt.info['sfreq'], filt_order=3, axis=1),
-            cnt)
-        ival = [0, 4000]
-        dataset = create_signal_target_from_raw_mne(cnt, marker_def, ival)
-        x = dataset.X[clean_trial_mask]
-        y = dataset.y[clean_trial_mask]
-
-        data = {'x': x, 'y': y, 'c': C_sensors, 's': fs}
-        return data
-
-
-
-class PreprocessKU:
-    def __init__(self):
-        self.selected_channels=['FC5','FC3','FC1','FC2','FC4','FC6','C5','C3','C1','Cz','C2','C4','C6','CP5','CP3','CP1','CPz','CP2','CP4','CP6']
-
-    def select_channels(self,x_data,ch_names,selected_channels=[]):
-        if not selected_channels:
-            selected_channels = self.selected_channels
-        selected_channels_idx = mne.pick_channels(ch_names, selected_channels,[])
-        x_data_selected = x_data[:,selected_channels_idx,:].copy()
-        return x_data_selected
 
 class FBCSP:
     def __init__(self,m_filters):
@@ -421,39 +294,38 @@ class MLEngine:
     def experiment(self):
 
         '''for BCIC Dataset'''
+        datasetPath = 'C:\\Users\\BCIgroup\\Desktop\\star\\Coding\\DMSANet\\data\\bci42a\\originalData'
+        subjects = ['A01T', 'A02T', 'A03T', 'A04T', 'A05T', 'A06T', 'A07T', 'A08T', 'A09T']
+        test_subjects = ['A01E', 'A02E', 'A03E', 'A04E', 'A05E', 'A06E', 'A07E', 'A08E', 'A09E']
 
-        datasetPath = 'C:/Users/BCIgroup/Desktop/star/Coding/FBCNet/FBCNet-master/data/hgd/originalData'
-        subjects = ['A01T', 'A02T', 'A03T', 'A04T', 'A05T', 'A06T', 'A07T', 'A08T', 'A09T', 'A10T', 'A11T', 'A12T', 'A13T',
-                'A14T']
-        test_subjects = ['A01E', 'A02E', 'A03E', 'A04E', 'A05E', 'A06E', 'A07E', 'A08E', 'A09E', 'A10E', 'A11E', 'A12E',
-                     'A13E', 'A14E']
-
-
-
-        hgd_data = LoadHGD('1')
+        bcic_data = LoadBCIC('1')
         training_accuracy = []
         testing_accuracy = []
         testing_precision = []
         testing_kappa = []
         testing_f1 = []
-
         for i in range(len(subjects)):
-            train_set = hgd_data.get_epochs(os.path.join(datasetPath, subjects[i] + '.mat'))
-            test_set = hgd_data.get_epochs(os.path.join(datasetPath, test_subjects[i] + '.mat'))
+            train_set = bcic_data.get_epochs(os.path.join(datasetPath, subjects[i] + '.gdf'),
+                                            os.path.join(datasetPath, subjects[i] +'.mat'))
+            test_set = bcic_data.get_epochs(os.path.join(datasetPath, test_subjects[i] + '.gdf'),
+                                            os.path.join(datasetPath, test_subjects[i] + '.mat'))
             train_data = train_set['x']
             train_label = train_set['y']
             test_data = test_set['x']
             test_label = test_set['y']
 
-            trainrate = 0.8
+            trainrate = 1.0
             train_data = train_data[:int(len(train_label)*trainrate)]
             train_label = train_label[:int(len(train_label)*trainrate)]
             print("hahahahah: ***********",int(len(train_label)))
 
             fbank = FilterBank(250)
             fbank_coeff = fbank.get_filter_coeff()
+
+            # ******
             filtered_train_data = fbank.filter_data(train_data,self.window_details)
             filtered_test_data = fbank.filter_data(test_data, self.window_details)
+            # ******
 
             y_classes_unique = np.unique(train_label)
             n_classes = len(np.unique(train_label))
@@ -485,7 +357,6 @@ class MLEngine:
             tr_acc = np.sum(y_train_predicted_multi == train_label, dtype=np.float) / len(train_label)
             te_acc = np.sum(y_test_predicted_multi == test_label, dtype=np.float) / len(test_label)
 
-
             precision = precision_score(test_label, y_test_predicted_multi, average='macro')
             kappa = cohen_kappa_score(test_label, y_test_predicted_multi)
             f1 = f1_score(test_label, y_test_predicted_multi, average='macro')
@@ -494,7 +365,6 @@ class MLEngine:
             print(f'Testing Accuracy = {str(te_acc)}\n \n')
 
             training_accuracy.append(tr_acc)
-
             testing_accuracy.append(te_acc)
             testing_precision.append(precision)
             testing_kappa.append(kappa)
@@ -502,91 +372,52 @@ class MLEngine:
 
         mean_training_accuracy = np.mean(np.asarray(training_accuracy))
         mean_testing_accuracy = np.mean(np.asarray(testing_accuracy))
-        std_testing_accuracy = np.std(np.asarray(testing_accuracy))
+        std_testing_accuracy = np.std(np.asarray(testing_accuracy), ddof=1)
+        sem_testing_accuracy = std_testing_accuracy / np.sqrt(len(testing_accuracy))
 
         mean_testing_precision = np.mean(np.asarray(testing_precision))
+        std_testing_precision = np.std(np.asarray(testing_precision), ddof=1)
+        sem_testing_precision = std_testing_precision / np.sqrt(len(testing_precision))
+
         mean_testing_kappa = np.mean(np.asarray(testing_kappa))
+        std_testing_kappa = np.std(np.asarray(testing_kappa), ddof=1)
+        sem_testing_kappa = std_testing_kappa / np.sqrt(len(testing_kappa))
+
         mean_testing_f1 = np.mean(np.asarray(testing_f1))
-        print('*' * 10)
-        print(f'Mean Training Accuracy = {str(mean_training_accuracy)}')
-        print(f'Mean Testing Accuracy = {str(mean_testing_accuracy)}')
-        print(f'Std Testing Accuracy = {str(std_testing_accuracy)}')
-        print('*' * 10)
-        print(f'Mean Testing precision = {str(mean_testing_precision)}')
-        print(f'Mean Testing kappa = {str(mean_testing_kappa)}')
-        print(f'Mean Testing f1 = {str(mean_testing_f1)}')
+        std_testing_f1 = np.std(np.asarray(testing_f1), ddof=1)
+        sem_testing_f1 = std_testing_f1 / np.sqrt(len(testing_f1))
+
+        print('*' * 10, '\n')
         print(testing_accuracy)
         print(testing_kappa)
         print(testing_precision)
         print(testing_f1)
-        print('*' * 10)
+        print('*' * 10, '\n')
 
-    def cross_validate_Ntimes_Kfold(self, y_labels, ifold=0):
-        from sklearn.model_selection import StratifiedKFold
-        train_indices = {}
-        test_indices = {}
-        random_seed = ifold
-        skf_model = StratifiedKFold(n_splits=self.kfold, shuffle=True, random_state=random_seed)
-        i = 0
-        for train_idx, test_idx in skf_model.split(np.zeros(len(y_labels)), y_labels):
-            train_indices.update({i: train_idx})
-            test_indices.update({i: test_idx})
-            i += 1
-        return train_indices, test_indices
+        print('*' * 10, '\n')
+        print(f'Mean Training Accuracy = {str(mean_training_accuracy)}\n')
+        print(f'Mean Testing Accuracy = {str(mean_testing_accuracy)}')
+        print(f'Std Testing Accuracy = {str(std_testing_accuracy)}')
+        print(f'Sem Testing Accuracy = {str(sem_testing_accuracy)}')
+        print('*' * 10, '\n')
 
-    def cross_validate_sequential_split(self, y_labels):
-        from sklearn.model_selection import StratifiedKFold
-        train_indices = {}
-        test_indices = {}
-        skf_model = StratifiedKFold(n_splits=self.kfold, shuffle=False)
-        i = 0
-        for train_idx, test_idx in skf_model.split(np.zeros(len(y_labels)), y_labels):
-            train_indices.update({i: train_idx})
-            test_indices.update({i: test_idx})
-            i += 1
-        return train_indices, test_indices
+        print('*' * 10, '\n')
+        print(f'Mean Testing precision = {str(mean_testing_precision)}')
+        print(f'Std Testing precision = {str(std_testing_precision)}')
+        print(f'Sem Testing precision = {str(sem_testing_precision)}')
+        print('*' * 10, '\n')
 
-    def cross_validate_half_split(self, y_labels):
-        import math
-        unique_classes = np.unique(y_labels)
-        all_labels = np.arange(len(y_labels))
-        train_idx =np.array([])
-        test_idx = np.array([])
-        for cls in unique_classes:
-            cls_indx = all_labels[np.where(y_labels==cls)]
-            if len(train_idx)==0:
-                train_idx = cls_indx[:math.ceil(len(cls_indx)/2)]
-                test_idx = cls_indx[math.ceil(len(cls_indx)/2):]
-            else:
-                train_idx=np.append(train_idx,cls_indx[:math.ceil(len(cls_indx)/2)])
-                test_idx=np.append(test_idx,cls_indx[math.ceil(len(cls_indx)/2):])
+        print('*' * 10, '\n')
+        print(f'Mean Testing kappa = {str(mean_testing_kappa)}')
+        print(f'Std Testing kappa = {str(std_testing_kappa)}')
+        print(f'Sem Testing kappa = {str(sem_testing_kappa)}')
+        print('*' * 10, '\n')
 
-        train_indices = {0:train_idx}
-        test_indices = {0:test_idx}
-
-        return train_indices, test_indices
-
-    def split_xdata(self,eeg_data, train_idx, test_idx):
-        x_train_fb=np.copy(eeg_data[:,train_idx,:,:])
-        x_test_fb=np.copy(eeg_data[:,test_idx,:,:])
-        return x_train_fb, x_test_fb
-
-    def split_ydata(self,y_true, train_idx, test_idx):
-        y_train = np.copy(y_true[train_idx])
-        y_test = np.copy(y_true[test_idx])
-
-        return y_train, y_test
-
-    def get_multi_class_label(self,y_predicted, cls_interest=0):
-        y_predict_multi = np.zeros((y_predicted.shape[0]))
-        for i in range(y_predicted.shape[0]):
-            y_lab = y_predicted[i, :]
-            lab_pos = np.where(y_lab == cls_interest)[0]
-            if len(lab_pos) == 1:
-                y_predict_multi[i] = lab_pos
-            elif len(lab_pos > 1):
-                y_predict_multi[i] = lab_pos[0]
-        return y_predict_multi
+        print('*' * 10, '\n')
+        print(f'Mean Testing f1 = {str(mean_testing_f1)}')
+        print(f'Std Testing f1 = {str(std_testing_f1)}')
+        print(f'Sem Testing f1 = {str(sem_testing_f1)}')
+        print('*' * 10, '\n')
 
     def get_multi_class_regressed(self, y_predicted):
         y_predict_multi = np.asarray([np.argmin(y_predicted[i,:]) for i in range(y_predicted.shape[0])])
@@ -630,15 +461,7 @@ class FilterBank:
         return filtered_data
 
 if __name__ == "__main__":
-    '''Example for loading Korea University Dataset'''
-    # dataset_details = {
-    #     'data_path': "/Volumes/Transcend/BCI/KU_Dataset/BCI dataset/DB_mat",
-    #     'subject_id': 1,
-    #     'sessions': [1],
-    #     'ntimes': 1,
-    #     'kfold': 10,
-    #     'm_filters': 2,
-    # }
+
 
     '''Example for loading BCI Competition IV Dataset 2a'''
     dataset_details={
