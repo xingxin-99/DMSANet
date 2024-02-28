@@ -1,4 +1,4 @@
-DMSANet
+```
 |__ code
     |__ centralRepo
     |__ classify
@@ -15,6 +15,8 @@ DMSANet
         |__ A01E.mat
         |__ A01T.mat
         |__ ...
+```
+
 ## BCI-IV-2A Dataset Download
 - **Download Link:** [https://www.bbci.de/competition/iv/#download](https://www.bbci.de/competition/iv/#download)
 - **Instructions:** Download the dataset files and label files from the provided link. Place them into the `DMSANet/data/bci42a/originalData` directory.
