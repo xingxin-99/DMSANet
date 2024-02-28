@@ -7,7 +7,7 @@ To extract discriminative spatio-temporal information of EEG signals, we propose
 ![DMSANet](DMSANet.png)
 
 ## How to use
-The package requirements to run all the codes are provided in file environment.txt. The complete instructions for utilising this toolbox are provided in requirements.txt.
+The package requirements to run all the codes are provided in file environment.txt. The complete instructions for utilising this toolbox are provided in requirements.md.
 
 # Acknowledgment
 We thank Ravikiran Mane et al. for their useful [toolbox](https://github.com/ravikiran-mane/FBCNet).
