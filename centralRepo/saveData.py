@@ -44,13 +44,24 @@ from braindecode.datautil.trial_segment import \
     create_signal_target_from_raw_mne
 from braindecode.mne_ext.signalproc import mne_apply, resample_cnt
 from braindecode.datautil.signalproc import exponential_running_standardize
+from scipy import signal
 
 masterPath = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(1, os.path.join(masterPath, 'centralRepo'))  # To load all the relevant files
 from eegDataset import eegDataset
 import transforms
 
-
+lowcut = 4
+highcut = 30
+fs = 250
+order = 5
+def butter_bandpass_filter(data):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = signal.butter(order, [low, high], btype='bandpass')
+    y = signal.filtfilt(b, a, data)
+    return y
 def parseBci42aFile(dataPath, labelPath, epochWindow=[0, 4], chans=list(range(22))):
     '''
     Parse the bci42a data file and return an epoched data.
@@ -241,6 +252,144 @@ def parseHGDDataset(datasetPath, savePath):
             data = parseHGDFile(os.path.join(datasetPath, sub + '.mat'))
             savemat(os.path.join(savePath, subL[iSubs] + str(iSub + 1).zfill(3) + '.mat'), data)
 
+def fetchAndParseKoreaFile(dataPath, url=None, epochWindow=[0, 4],
+                           chans=[7, 32, 8, 9, 33, 10, 34, 12, 35, 13, 36, 14, 37, 17, 38, 18, 39, 19, 40, 20],
+                           downsampleFactor=4):
+    '''
+    Parse one subjects EEG dat from Korea Uni MI dataset.
+
+    Parameters
+    ----------
+    dataPath : str
+        math to the EEG datafile EEG_MI.mat.
+        if the file doesn't exists then it will be fetched over FTP using url
+    url : str, optional
+        FTP URL to fetch the data from. The default is None.
+    epochWindow : list, optional
+        time segment to extract in seconds. The default is [0,4].
+    chans  : list
+        channels to select from the data.
+    downsampleFactor  : int
+        Data down-sample factor
+
+    Returns
+    -------
+    data : a eeg structure with following fields:
+        x: 3d np array with epoched eeg data : chan x time x trials
+        y: 1d np array containing trial labels starting from 0
+        s: float, sampling frequency
+        c: list of channels - can be list of ints or channel names. .
+
+    '''
+
+    eventCode = [1, 2]  # start of the trial at t=0
+    s = 1000
+    offset = 0
+
+    # check if the file exists or fetch it over ftp
+    if not os.path.exists(dataPath):
+        if not os.path.exists(os.path.dirname(dataPath)):
+            os.makedirs(os.path.dirname(dataPath))
+        print('fetching data over ftp: ' + dataPath)
+        with closing(request.urlopen(url)) as r:
+            with open(dataPath, 'wb') as f:
+                shutil.copyfileobj(r, f)
+
+    # read the mat file:
+    try:
+        data = loadmat(dataPath)
+    except:
+        print('Failed to load the data. retrying the download')
+        with closing(request.urlopen(url)) as r:
+            with open(dataPath, 'wb') as f:
+                shutil.copyfileobj(r, f)
+        data = loadmat(dataPath)
+
+    x = np.concatenate((data['EEG_MI_train'][0, 0]['smt'], data['EEG_MI_test'][0, 0]['smt']), axis=1).astype(np.float32)
+    y = np.concatenate((data['EEG_MI_train'][0, 0]['y_dec'].squeeze(), data['EEG_MI_test'][0, 0]['y_dec'].squeeze()),
+                       axis=0).astype(int) - 1
+    c = np.array([m.item() for m in data['EEG_MI_train'][0, 0]['chan'].squeeze().tolist()])
+    s = data['EEG_MI_train'][0, 0]['fs'].squeeze().item()
+    del data
+
+    # extract the requested channels:
+    if chans is not None:
+        x = x[:, :, np.array(chans)]
+        c = c[np.array(chans)]
+
+    # down-sample if requested .
+    if downsampleFactor is not None:
+        xNew = np.zeros((int(x.shape[0] / downsampleFactor), x.shape[1], x.shape[2]), np.float32)
+        for i in range(x.shape[2]):  # resampy.resample cant handle the 3D data.
+            xNew[:, :, i] = resampy.resample(x[:, :, i], s, s / downsampleFactor, axis=0)
+        x = xNew
+        s = s / downsampleFactor
+
+    # change the data dimensions to be in a format: Chan x time x trials
+    x = np.transpose(x, axes=(1, 2, 0))
+
+    x = butter_bandpass_filter(x)
+
+    return {'x': x, 'y': y, 'c': c, 's': s}
+
+
+def parseKoreaDataset(datasetPath, savePath, epochWindow=[0, 4],
+                      chans=[7, 32, 8, 9, 33, 10, 34, 12, 35, 13, 36, 14, 37, 17, 38, 18, 39, 19, 40, 20],
+                      downsampleFactor=4, verbos=False):
+    '''
+    Parse the Korea Uni. MI data in a MATLAB formate that will be used in the next analysis
+
+    The URL based fetching is a primitive code. So, please make sure not to interrupt it.
+    Also, if you interrupt the process for any reason, remove the last downloaded subjects data.
+    This is because, it's highly likely that the downloaded file for that subject will be corrupt.
+
+    In spite of all this, make sure that you have close to 100GB free disk space
+    and 70GB network bandwidth to properly download and save the MI data.
+
+    Parameters
+    ----------
+    datasetPath : str
+        Path to the BCI IV2a original dataset in gdf formate.
+    savePath : str
+        Path on where to save the epoched EEG data in a mat format.
+    epochWindow : list, optional
+        time segment to extract in seconds. The default is [0,4].
+    chans  : list :
+        channels to select from the data.
+    downsampleFactor : int / None, optional
+        down-sampling factor to use. The default is 4.
+    verbos : TYPE, optional
+        DESCRIPTION. The default is False.
+
+    Returns
+    -------
+    None.
+    The dataset will be saved at savePath.
+
+    '''
+    # Base url for fetching any data that is not present!
+    fetchUrlBase = 'ftp://parrot.genomics.cn/gigadb/pub/10.5524/100001_101000/100542/'
+    subjects = list(range(54))
+    subAll = [subjects, subjects]
+    subL = ['s', 'se']  # s: session 1, se: session 2 (session evaluation)
+
+    print('Extracting the data into mat format: ')
+    if not os.path.exists(savePath):
+        os.makedirs(savePath)
+    print('Processed data be saved in folder : ' + savePath)
+
+    for iSubs, subs in enumerate(subAll):
+        for iSub, sub in enumerate(subs):
+            print('Processing subject No.: ' + subL[iSubs] + str(iSub + 1).zfill(3))
+            if not os.path.exists(os.path.join(savePath, subL[iSubs] + str(iSub + 1).zfill(3) + '.mat')):
+                fileUrl = fetchUrlBase + 'session' + str(iSubs + 1) + '/' + 's' + str(iSub + 1) + '/' + 'sess' + str(
+                    iSubs + 1).zfill(2) + '_' + 'subj' + str(iSub + 1).zfill(2) + '_EEG_MI.mat'
+                data = fetchAndParseKoreaFile(
+                    os.path.join(datasetPath, 'session' + str(iSubs + 1), 's' + str(iSub + 1), 'EEG_MI.mat'),
+                    fileUrl, epochWindow=epochWindow, chans=chans, downsampleFactor=downsampleFactor)
+
+                savemat(os.path.join(savePath, subL[iSubs] + str(iSub + 1).zfill(3) + '.mat'), data)
+
 
 
 def matToPython(datasetPath, savePath, isFiltered=False):
@@ -341,6 +490,7 @@ def matToPython(datasetPath, savePath, isFiltered=False):
 
 
 def fetchData(dataFolder, datasetId=0):
+
     '''
     Check if the rawMat, rawPython, and multiviewPython data exists
     if not, then create the above data
@@ -376,6 +526,13 @@ def fetchData(dataFolder, datasetId=0):
                              os.path.join(dataFolder, oDataFolder) +
                              ' Please download and copy the extracted dataset at the above path ' +
                              ' More details about how to download this data can be found in the instructions.txt file')
+        elif datasetId == 2:
+            print('The Korea dataset doesn\'t exist at path: ' +
+                  os.path.join(dataFolder, oDataFolder) +
+                  ' So it will be automatically downloaded over FTP server ' +
+                  'Please make sure that you have ~60GB Internet bandwidth and 80 GB space ' +
+                  'the data size is ~60GB so its going to take a while ' +
+                  'Meanwhile you can take a nap!')
         else :
             raise ValueError('datasetId input error!')
     else:
@@ -394,6 +551,13 @@ def fetchData(dataFolder, datasetId=0):
                              ' is not complete. Please download and copy the extracted dataset at the above path ' +
                              'The dataset should contain 28 files (28 .mat)'
                              ' More details about how to download this data can be found in the instructions.txt file')
+        elif datasetId == 2 and oDataLen < 108:
+            print('The Korea dataset at path: ' +
+                  os.path.join(dataFolder, oDataFolder) +
+                  ' is incomplete. So it will be automatically downloaded over FTP server' +
+                  ' Please make sure that you have ~60GB Internet bandwidth and 80 GB space' +
+                  ' the data size is ~60GB so its going to take a while' +
+                  ' Meanwhile you can take a nap!')
 
     # Check if the processed mat data exists:
     if not os.path.exists(os.path.join(dataFolder, rawMatFolder)):
@@ -402,7 +566,8 @@ def fetchData(dataFolder, datasetId=0):
             parseBci42aDataset(os.path.join(dataFolder, oDataFolder), os.path.join(dataFolder, rawMatFolder))
         elif datasetId == 1:
             parseHGDDataset(os.path.join(dataFolder, oDataFolder), os.path.join(dataFolder, rawMatFolder))
-
+        elif datasetId == 2:
+            parseKoreaDataset(os.path.join(dataFolder, oDataFolder), os.path.join(dataFolder, rawMatFolder))
     # Check if the processed python data exists:
     if not os.path.exists(os.path.join(dataFolder, rawPythonFolder, 'dataLabels.csv')):
         print(

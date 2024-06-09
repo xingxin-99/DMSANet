@@ -216,7 +216,7 @@ class baseModel():
 
         # if test data is present then get the results for the test data.
         if testData is not None:
-            pred, act, l = self.predict(testData, sampler=sampler, lossFn=lossFn,tsneEnable=True)
+            pred, act, l = self.predict(testData, sampler=sampler, lossFn=lossFn,tsneEnable=False)
             testResults = self.calculateResults(pred, act, classes=classes)
             testResults['loss'] = l
             expDetail['results']['test'] = testResults
@@ -417,6 +417,10 @@ class baseModel():
         return {'trainResults': t, 'valResults': v,
                 'trainLoss': trainLoss, 'valLoss' : valLoss}
 
+        # Segmentation and Reconstruction (S&R) data augmentation
+
+
+
     def trainOneEpoch(self, trainData, lossFn, optimizer, sampler = None):
         '''
         Train for one epoch
@@ -458,8 +462,8 @@ class baseModel():
 
         # iterate over all the data
         for d in dataLoader:
-            with torch.enable_grad():
 
+            with torch.enable_grad():
 
                 optimizer.zero_grad()
                 output,f = self.net(d['data'].unsqueeze(1).to(self.device))
@@ -527,9 +531,24 @@ class baseModel():
 
                 if tsneEnable:
                     feats = feats.reshape(len(d['data']), -1).data.detach().cpu()
+                    # feats = d['data'].reshape(len(d['data']), -1).data.detach().cpu()
 
-                    title = "-tsne-" + self.net._get_name()
-                    filepath = 'C:/Users/BCIgroup/Desktop/star/dmsanet' + title
+                    dataset = "bci"
+                    sub = "003"
+
+                    # title = "openbmi-tsne-sub028" + self.net._get_name()
+                    current_work_dir = os.path.dirname(__file__)  # 当前文件所在的目录
+                    parent_dir = os.path.dirname(current_work_dir)
+                    filepath =os.path.join(parent_dir,"TSNE",dataset,sub,self.net._get_name())
+                    # 检查路径是否存在，如果不存在则创建
+                    if not os.path.exists(filepath):
+                        os.makedirs(filepath)
+                        print(f"Directory {filepath} created.")
+                    else:
+                        print(f"Directory {filepath} already exists.")
+                    # filepath = os.path.join(filepath, self.net._get_name())
+                    print(filepath)
+                        # 'C:/Users/BCIgroup/Desktop/star/dmsanet' + title
                     from pandas import DataFrame
                     y = d['label'].numpy()
                     fig, ax = plt.subplots(figsize=(3.5, 3.5))
@@ -539,6 +558,7 @@ class baseModel():
                     ax.scatter(embeddings[y == 1, 0], embeddings[y == 1, 1], c='forestgreen', s=5)
                     ax.scatter(embeddings[y == 2, 0], embeddings[y == 2, 1], c='peru', s=5)
                     ax.scatter(embeddings[y == 3, 0], embeddings[y == 3, 1], c='firebrick', s=5)
+
                     # 取消x轴和y轴的刻度及标签显示
                     # 设置 x 轴和 y 轴的刻度标签为空列表
                     ax.set_xticklabels([])
@@ -548,9 +568,11 @@ class baseModel():
                     ax.set_xlabel('')
                     ax.set_ylabel('')
                     # ax.legend()
-                    plt.show()
-                    ax.axis('off')
+                    # plt.show()
+                    # ax.axis('off')
                     plt.savefig(filepath + '.pdf', dpi=600, format='pdf')
+                    plt.savefig(filepath + '.png', dpi=600, format='png')
+                    plt.savefig(filepath + '.eps', dpi=600, format='eps')
 
                 totalCount += d['data'].shape[0]
 
