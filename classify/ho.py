@@ -36,8 +36,8 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
     selectiveSubs = False
     
     # decide which data to operate on:
-    # datasetId ->  0:BCI-IV-2a data,    1: HGD data
-    datasets = ['bci42a', 'hgd']
+    # datasetId ->  0:BCI-IV-2a data,    1: HGD data 2:OpenBMI data
+    datasets = ['bci42a', 'hgd','korea']
     
     #%% Define all the model and training related options here.
     config = {}
@@ -60,13 +60,18 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
         config['modelArguments'] = {'nChan': 22, 'nTime': 1000, 'dropoutP': 0.5,
                                     'nBands':9, 'm' : 32, 'temporalLayer': 'LogVarLayer',
                                     'nClass': 4, 'doWeightNorm': True}
+    elif datasetId == 2:
+        config['modelArguments'] = {'nChan': 20, 'nTime': 1000, 'dropoutP': 0.5,
+                                    'nBands': 9, 'm': 32, 'temporalLayer': 'LogVarLayer',
+                                    'nClass': 2, 'doWeightNorm': True}
     
     # Training related details    
     config['modelTrainArguments'] = {'stopCondi':  {'c': {'Or': {'c1': {'MaxEpoch': {'maxEpochs': 1500, 'varName' : 'epoch'}},
                                                        'c2': {'NoDecrease': {'numEpochs' : 200, 'varName': 'valInacc'}} } }},
           'classes': [0,1,2,3], 'sampler' : 'RandomSampler', 'loadBestModel': True,
           'bestVarToCheck': 'valInacc', 'continueAfterEarlystop':True,'lr': 1e-3}
-
+    if datasetId ==2:
+        config['modelTrainArguments']['classes'] = [0,1] # 2 class data
 
     config['transformArguments'] = None
 
@@ -87,8 +92,15 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
     toolboxPath = os.path.dirname(masterPath)
     config['inDataPath'] = os.path.join(toolboxPath, 'data')
 
+
+
+    # # Input data datasetId folders
+    # modeInFol = 'rawPython'
     # Input data datasetId folders
-    modeInFol = 'rawPython'
+    if 'FBCNet' in config['network']:
+        modeInFol = 'multiviewPython'  # FBCNet uses multi-view data
+    else:
+        modeInFol = 'rawPython'
 
     # set final input location
     config['inDataPath'] = os.path.join(config['inDataPath'], datasets[datasetId], modeInFol)
@@ -216,7 +228,7 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
 
    #%% Find all the subjects to run 
     subs = sorted(set([d[3] for d in data.labels]))
-    # subs=['003']
+
     nSub = len(subs)
 
     ## Set sub2run
@@ -232,6 +244,7 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
     trainResults = []
     valResults = []
     testResults = []
+    trainTime = []
 
     for iSub, sub in enumerate(subs):
         
@@ -275,8 +288,14 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
         net.load_state_dict(netInitState, strict=False)
         
         outPathSub = os.path.join(config['outPath'], 'sub'+ str(iSub))
+
+        start = time.time()
         model = baseModel(net=net, resultsSavePath=outPathSub, batchSize= config['batchSize'], nGPU = nGPU)
         model.train(trainData, valData, testData, **config['modelTrainArguments'])
+
+        # Time taken
+        trainTime.append(time.time() - start)
+        print("Time taken = " + str(time.time() - start))
         
         # extract the important results.
         trainResults.append([d['results']['trainBest'] for d in model.expDetails])
@@ -351,6 +370,8 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
     print(valPre)
     print(testPre)
 
+
+
     # append the confusion matrix
     trainCm = [[r['cm'] for r in result] for result in trainResults]
     trainCm = list(map(list, zip(*trainCm)))
@@ -360,13 +381,56 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
     valCm = list(map(list, zip(*valCm)))
     valCm = [np.concatenate(tuple([cm for cm in cms]), axis = 1) for cms in valCm]
 
+
     testCm = [[r['cm'] for r in result] for result in testResults]
+    result_cm = np.sum(testCm, axis=0)
+
     testCm = list(map(list, zip(*testCm)))
     testCm = [np.concatenate(tuple([cm for cm in cms]), axis = 1) for cms in testCm]
 
     print(trainCm)
     print(valCm)
     print(testCm)
+    # %% txt writing
+    resultName = os.path.join(config['outPath'], 'results.txt')
+
+    with open(resultName, 'w', encoding='utf-8') as file:
+        file.write("---------------Acc---------------"+"\n")
+        file.write("ACC"+"\n")
+        file.write(str(testAcc) + "\n")
+        file.write("Avg:" +str(np.mean([sublist[0] for sublist in testAcc]))+ "\n")
+        file.write("Std:" + str(np.std([sublist[0] for sublist in testAcc])) + "\n")
+        file.write("---------------Kappa---------------" + "\n")
+        file.write("Kappa" + "\n")
+        file.write(str(testKappa) + "\n")
+        file.write("Avg:" + str(np.mean([sublist[0] for sublist in testKappa])) + "\n")
+        file.write("Std:" + str(np.std([sublist[0] for sublist in testKappa])) + "\n")
+        file.write("---------------F1---------------" + "\n")
+        file.write("F1" + "\n")
+        file.write(str(testF1) + "\n")
+        file.write("Avg:" + str(np.mean([sublist[0] for sublist in testF1])) + "\n")
+        file.write("Std:" + str(np.std([sublist[0] for sublist in testF1])) + "\n")
+        file.write("---------------Pre---------------" + "\n")
+        file.write("Pre" + "\n")
+        file.write(str(testPre) + "\n")
+        file.write("Avg:" + str(np.mean([sublist[0] for sublist in testPre])) + "\n")
+        file.write("Std:" + str(np.std([sublist[0] for sublist in testPre])) + "\n")
+        file.write("---------------CM---------------" + "\n")
+        file.write("CM" + "\n")
+        file.write(str(testCm) + "\n")
+
+        file.write("---------------TrainTime---------------" + "\n")
+        file.write("TrainTime" + "\n")
+        file.write(str(trainTime) + "\n")
+        file.write("Avg:" + str(np.mean(trainTime)) + "\n\n")
+
+        file.write('Trainable Parameters in the network are: ' + str(count_parameters(net)))
+
+
+
+
+
+
     #%% Excel writing
     book = xlwt.Workbook(encoding="utf-8")
     for i, res in enumerate(trainAcc):
@@ -398,6 +462,9 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
         sheet1 = excelAddData(sheet1, [1, 14], [[pre] for pre in valPre[i]], isNpData=True)
         sheet1 = excelAddData(sheet1, [1, 15], [[pre] for pre in testPre[i]], isNpData=True)
 
+        # time
+        sheet1 = excelAddData(sheet1, [1, 16], [[time] for time in trainTime])
+
         # write the cm
         for isub, sub in enumerate(subs):
             sheet1 = excelAddData(sheet1, [len(trainAcc[0])+5,0+isub*len( config['modelTrainArguments']['classes'])], sub)
@@ -407,6 +474,9 @@ def ho(datasetId = None, network = None, nGPU = None, subTorun=None):
         sheet1 = excelAddData(sheet1, [len(trainAcc[0])+12,0], valCm[i].tolist(), isNpData= False)
         sheet1 = excelAddData(sheet1, [len(trainAcc[0])+17,0], ['test CM:'])
         sheet1 = excelAddData(sheet1, [len(trainAcc[0])+18,0], testCm[i].tolist(), isNpData= False)
+
+        sheet1 = excelAddData(sheet1, [len(trainAcc[0]) + 22, 0], ['total CM:'])
+        sheet1 = excelAddData(sheet1, [len(trainAcc[0]) + 23, 0], result_cm[i].tolist(), isNpData=False)
 
     book.save(os.path.join(config['outPath'], 'results.xls'))
 
@@ -434,4 +504,4 @@ if __name__ == '__main__':
 
     else:
         subTorun = None
-    ho(datasetId=1, network='DMSANet', nGPU='0', subTorun=subTorun)
+    ho(datasetId=0, network='DMSANet', nGPU='0', subTorun=subTorun)

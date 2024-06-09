@@ -35,14 +35,14 @@ def cv(datasetId = None, network = None, nGPU = None, subTorun=None):
 
     #%% Set the defaults use these to quickly run the network
     datasetId = datasetId or 0
-    network = network or 'FBCNet'
+    network = network or 'DMSANet'
     nGPU = nGPU or 0
     subTorun= subTorun or None
     selectiveSubs = False
     
     # decide which data to operate on:
     # datasetId ->  0:BCI-IV-2a data,    1: high-gamma data
-    datasets = ['bci42a', 'hgd']
+    datasets = ['bci42a', 'hgd','korea']
     
     #%% Define all the model and training related options here.
     config = {}
@@ -66,12 +66,19 @@ def cv(datasetId = None, network = None, nGPU = None, subTorun=None):
         config['modelArguments'] = {'nChan': 22, 'nTime': 1000, 'dropoutP': 0.5,
                                     'nBands':9, 'm' : 32, 'temporalLayer': 'LogVarLayer',
                                     'nClass': 4, 'doWeightNorm': True}
+    elif datasetId == 2:
+        config['modelArguments'] = {'nChan': 20, 'nTime': 1000, 'dropoutP': 0.5,
+                                    'nBands': 9, 'm': 32, 'temporalLayer': 'LogVarLayer',
+                                    'nClass': 2, 'doWeightNorm': True}
     
     # Training related details    
     config['modelTrainArguments'] = {'stopCondi':  {'c': {'Or': {'c1': {'MaxEpoch': {'maxEpochs': 1500, 'varName' : 'epoch'}},
                                                        'c2': {'NoDecrease': {'numEpochs' : 200, 'varName': 'valInacc'}} } }},
           'classes': [0,1,2,3], 'sampler' : 'RandomSampler', 'loadBestModel': True,
           'bestVarToCheck': 'valInacc', 'continueAfterEarlystop':True,'lr': 1e-3}
+
+    if datasetId ==2:
+        config['modelTrainArguments']['classes'] = [0,1] # 2 class data
 
 
     config['transformArguments'] = None
@@ -88,7 +95,8 @@ def cv(datasetId = None, network = None, nGPU = None, subTorun=None):
     # For random division set config['loadCVFold'] to False
     config['loadCVFold'] = True
     config['pathCVFold'] = {0: 'CVIdx-subSpec-bci42a-seq.json',
-                            1: 'CVIdx-subSpec-hgd-seq.json'}
+                            1: 'CVIdx-subSpec-hgd-seq.json',
+                            2:'CVIdx-subSpec-openBMI-seq.json'}
 
     # network initialization details:
     config['loadNetInitState'] = True;
@@ -592,4 +600,4 @@ if __name__ == '__main__':
     else:
         subTorun = None
 
-    cv(datasetId=1, network='DMSANet', nGPU='0', subTorun=subTorun)
+    cv(datasetId=0, network='DMSANet', nGPU='0', subTorun=subTorun)
